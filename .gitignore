@@ -1,3 +1,79 @@
-/node_modules/
-/lib/
-.bsb.lock
+Air Quality & Public Health Impact Analysis
+ Python exploratory analysis for a GitHub portfolio
+
+Goal: Explore how air pollutants relate to hospital admissions across cities and produce insights suitable for a Power BI dashboard.
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+df = pd.read_csv('data/air_quality_health_dataset.csv')
+df['date'] = pd.to_datetime(df['date'])
+df.head()
+1. Data quality checks
+Check dimensions, missing values, duplicates, data types, city coverage and date range.
+print('Shape:', df.shape)
+print('\nMissing values:\n', df.isna().sum())
+print('\nDuplicates:', df.duplicated().sum())
+print('\nCities:', df['city'].nunique())
+print('\nDate range:', df['date'].min(), 'to', df['date'].max())
+Data-quality observation
+The dataset has no missing values or duplicate rows. 
+The date range extends to 2262, which is unusually long for a real-world public-health dataset. 
+Treat the project as an analytical/synthetic portfolio dataset unless its provenance confirms otherwise.
+df['year'] = df['date'].dt.year
+df['month_num'] = df['date'].dt.month
+df['month'] = df['date'].dt.month_name().str[:3]
+df['year_month'] = df['date'].dt.to_period('M').astype(str)
+df['capacity_utilization_pct'] = (df['hospital_admissions']/df['hospital_capacity']*100).round(2)
+
+def aqi_category(x):
+    if x <= 50: return 'Good'
+    if x <= 100: return 'Moderate'
+    if x <= 150: return 'Unhealthy for Sensitive Groups'
+    if x <= 200: return 'Unhealthy'
+    if x <= 300: return 'Very Unhealthy'
+    return 'Hazardous'
+
+df['aqi_category'] = df['aqi'].apply(aqi_category)
+
+2. Descriptive statistics and city comparison
+city_summary = df.groupby('city').agg(
+    avg_aqi=('aqi','mean'),
+    avg_pm2_5=('pm2_5','mean'),
+    avg_pm10=('pm10','mean'),
+    avg_hospital_admissions=('hospital_admissions','mean'),
+    total_hospital_admissions=('hospital_admissions','sum')
+).sort_values('avg_aqi', ascending=False).round(2)
+city_summary
+plt.figure(figsize=(10,6))
+city_summary.sort_values('avg_aqi')['avg_aqi'].plot(kind='barh')
+plt.title('Average AQI by City')
+plt.xlabel('Average AQI')
+plt.tight_layout()
+plt.show()
+3. Pollution vs hospital admissions
+corr_cols = ['aqi','pm2_5','pm10','no2','o3','temperature','humidity','hospital_admissions','hospital_capacity']
+corr = df[corr_cols].corr()
+corr['hospital_admissions'].sort_values(ascending=False)
+sample = df.sample(min(6000, len(df)), random_state=42)
+plt.figure(figsize=(9,6))
+plt.scatter(sample['pm2_5'], sample['hospital_admissions'], alpha=0.25)
+coef = np.polyfit(sample['pm2_5'], sample['hospital_admissions'], 1)
+x = np.linspace(sample['pm2_5'].min(), sample['pm2_5'].max(), 100)
+plt.plot(x, coef[0]*x + coef[1])
+plt.title('PM2.5 vs Hospital Admissions')
+plt.xlabel('PM2.5')
+plt.ylabel('Hospital Admissions')
+plt.tight_layout()
+plt.show()
+df['pm25_quartile'] = pd.qcut(df['pm2_5'], 4, labels=['Q1 Low','Q2','Q3','Q4 High'])
+pm25_q = df.groupby('pm25_quartile', observed=False)['hospital_admissions'].mean()
+pm25_q
+plt.figure(figsize=(9,6))
+pm25_q.plot(kind='bar')
+plt.title('Average Admissions by PM2.5 Quartile')
+plt.xlabel('PM2.5 Quartile')
+plt.ylabel('Average Hospital Admissions')
+plt.xticks(rotation=0)
+plt.tight_layout()
+plt.show()
